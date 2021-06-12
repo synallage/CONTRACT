@@ -1,28 +1,48 @@
-// SPDX-License-Identifier: GPL-3.0
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity 0.7.4;
 
-pragma solidity >=0.7.0 <0.9.0;
+import "../../openzeppelin/contracts-upgradeable/GSN/ContextUpgradeable.sol";
+import "../../openzeppelin/contracts-upgradeable/utils/EnumerableSetUpgradeable.sol";
+import "../../openzeppelin/contracts-upgradeable/math/SafeMathUpgradeable.sol";
 
-/**
- * @title Storage
- * @dev Store & retrieve value in a variable
- */
-contract Storage {
+import "./interface/IAccessControl.sol";
+import "./module/LiquidityPoolModule.sol";
+import "./Type.sol";
 
-    uint256 number;
+contract Storage is ContextUpgradeable {
+    using SafeMathUpgradeable for uint256;
+    using LiquidityPoolModule for LiquidityPoolStorage;
 
-    /**
-     * @dev Store value in variable
-     * @param num value to store
-     */
-    function store(uint256 num) public {
-        number = num;
+    LiquidityPoolStorage internal _liquidityPool;
+
+    modifier onlyExistedPerpetual(uint256 perpetualIndex) {
+        require(perpetualIndex < _liquidityPool.perpetualCount, "perpetual not exist");
+        _;
     }
 
-    /**
-     * @dev Return value 
-     * @return value of 'number'
-     */
-    function retrieve() public view returns (uint256){
-        return number;
+    modifier onlyKeeper() {
+        require(
+            _liquidityPool.keeper == address(0) || _liquidityPool.keeper == _msgSender(),
+            "caller must be keeper"
+        );
+        _;
     }
+
+    modifier syncState(bool ignoreTerminated) {
+        uint256 currentTime = block.timestamp;
+        _liquidityPool.updateFundingState(currentTime);
+        _liquidityPool.updatePrice(currentTime, ignoreTerminated);
+        _;
+        _liquidityPool.updateFundingRate();
+    }
+
+    modifier onlyAuthorized(address trader, uint256 privilege) {
+        require(
+            _liquidityPool.isAuthorized(trader, _msgSender(), privilege),
+            "unauthorized caller"
+        );
+        _;
+    }
+
+    bytes32[28] private __gap;
 }
